@@ -34,19 +34,19 @@ export class ScrapeNinja implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				options: [
-					{
-						name: 'Scrape (No JS)',
-						value: 'scrape',
-						description: 'High-performance, no-JS endpoint',
-						action: 'High-performance, no-JS endpoint',
-					},
-					{
-						name: 'Scrape with JS',
-						value: 'scrape-js',
-						description: 'Real Chrome rendering with JavaScript. Takes screenshots. 3x slower',
-						action: 'Real Chrome rendering with JavaScript. Takes screenshots. 3x slower',
-					},
-				],
+                    {
+                        name: 'Scrape (No JS)',
+                        value: 'scrape',
+                        description: 'High-performance, no-JS endpoint. Performs raw network request with TLS fingerprint of a real browser.',
+                        action: 'Scrape faster without Javascript', // eslint-disable-line
+                    },
+                    {
+                        name: 'Scrape as a Real Browser',
+                        value: 'scrape-js',
+                        description: 'Real Chrome rendering with Javascript. Takes screenshots. 3x slower',
+                        action: 'Scrape slower with real browser',
+                    },
+                ],
 				default: 'scrape',
 				description: 'Choose which endpoint to call',
 			},
@@ -56,7 +56,7 @@ export class ScrapeNinja implements INodeType {
 				type: 'string',
 				default: '',
 				placeholder: 'https://example.com',
-				description: 'URL to scrape. Use https://myip.scrapeninja.net/ to see the IP address and geo location of your request. Use https://apiroad.net/post-json.php to test what headers you send and what IP address you get',
+				description: 'URL to scrape. Use https://myip.scrapeninja.net/ to see the IP address and geo location of your request. Use https://apiroad.net/post-JSON.php to test what headers you send and what IP address you get',
 				required: true,
 			},
 			{
@@ -69,7 +69,7 @@ export class ScrapeNinja implements INodeType {
 				},
 				default: [],
 				placeholder: 'X-Header: some-random-header',
-				description: 'Custom request headers (one per line: "HeaderName: value"). Adding User-Agent and other basic headers is NOT recommended header, they will be added automatically by ScrapeNinja. If you want to see which headers ScrapeNinja adds by default, try to scrape https://apiroad.net/post-json.php',
+				description: 'Custom request headers (one per line: "HeaderName: value"). Adding User-Agent and other basic headers is NOT recommended header, they will be added automatically by ScrapeNinja. If you want to see which headers ScrapeNinja adds by default, try to scrape https://apiroad.net/post-JSON.php',
 			},
 			{
 				displayName: 'Retry Count',
@@ -113,14 +113,14 @@ export class ScrapeNinja implements INodeType {
 					},
 				],
 				default: 'us',
-				description: 'Proxy geo location or custom proxy. Note that each attempt will be made from a different IP address if using "Geo" option',
+				description: 'Proxy geo location or custom proxy. Note that each attempt will be made from a different IP address if using "Geo" option.',
 			},
 			{
 				displayName: 'Custom Proxy URL',
 				name: 'proxy',
 				type: 'string',
 				default: '',
-				description: 'Premium or custom proxy URL. See proxy setup guide at https://scrapeninja.net/docs/proxy-setup/',
+				description: 'Premium or custom proxy URL. See proxy setup guide at https://scrapeninja.net/docs/proxy-setup/.',
 				placeholder: 'http://user:pass@host:port',
 				displayOptions: {
 					show: {
@@ -129,11 +129,11 @@ export class ScrapeNinja implements INodeType {
 				},
 			},
 			{
-				displayName: 'Timeout (seconds)',
+				displayName: 'Timeout (Seconds)',
 				name: 'timeout',
 				type: 'number',
 				default: 10,
-				description: 'Timeout per attempt (in seconds).',
+				description: 'Timeout per attempt (in seconds)',
 				displayOptions: {
 					show: {
 						operation: ['scrape'],
@@ -141,11 +141,11 @@ export class ScrapeNinja implements INodeType {
 				},
 			},
 			{
-				displayName: 'Timeout (seconds)',
+				displayName: 'Timeout (Seconds)',
 				name: 'timeoutJs',
 				type: 'number',
 				default: 16,
-				description: 'Timeout per attempt (in seconds) for JS-based scraping.',
+				description: 'Timeout per attempt (in seconds) for JS-based scraping',
 				displayOptions: {
 					show: {
 						operation: ['scrape-js'],
@@ -161,7 +161,7 @@ export class ScrapeNinja implements INodeType {
 					multipleValueButtonText: 'Add Text',
 				},
 				default: [],
-				description: 'Array of text patterns that, if found, will trigger a retry with another proxy.',
+				description: 'Array of text patterns that, if found, will trigger a retry with another proxy',
 			},
 			{
 				displayName: 'Status Not Expected',
@@ -171,11 +171,11 @@ export class ScrapeNinja implements INodeType {
 					multipleValues: true,
 					multipleValueButtonText: 'Add Status Code',
 				},
-				default: [403, 502],
-				description: 'HTTP statuses that will trigger a retry with another proxy.',
+				default: 0,
+				description: 'HTTP statuses that will trigger a retry with another proxy',
 			},
 			{
-				displayName: 'Extractor (custom JS)',
+				displayName: 'Extractor (Custom JS)',
 				name: 'extractor',
 				type: 'string',
 				typeOptions: {
@@ -188,7 +188,7 @@ export class ScrapeNinja implements INodeType {
         title: $('h1:first').text().trim()
     };
 }`,
-				description: 'Custom JS function for extracting JSON from HTML. See docs and playground at https://scrapeninja.net/docs/js-extractor/\n\nThe function receives page HTML as "input" and Cheerio parser as "cheerio". Must return a JSON object.',
+				description: 'Custom JS function for extracting JSON from HTML. See docs and playground at https://scrapeninja.net/docs/js-extractor/ The function receives page HTML as "input" and Cheerio parser as "cheerio". Must return a JSON object.',
 				noDataExpression: true,
 			},
 			{
@@ -208,7 +208,7 @@ export class ScrapeNinja implements INodeType {
 				name: 'waitForSelector',
 				type: 'string',
 				default: '',
-				description: 'CSS selector to wait for before considering page loaded.',
+				description: 'CSS selector to wait for before considering page loaded',
 				displayOptions: {
 					show: {
 						operation: ['scrape-js'],
@@ -232,7 +232,7 @@ export class ScrapeNinja implements INodeType {
 				name: 'waitForSelectorIframe',
 				type: 'string',
 				default: '',
-				description: 'CSS selector to wait for inside the iframe (if "dumpIframe" is set).',
+				description: 'CSS selector to wait for inside the iframe (if "dumpIframe" is set)',
 				displayOptions: {
 					show: {
 						operation: ['scrape-js'],
@@ -244,7 +244,7 @@ export class ScrapeNinja implements INodeType {
 				name: 'extractorTargetIframe',
 				type: 'boolean',
 				default: false,
-				description: 'Run the custom extractor on iframe HTML instead of the main page.',
+				description: 'Whether to run the custom extractor on iframe HTML instead of the main page',
 				displayOptions: {
 					show: {
 						operation: ['scrape-js'],
@@ -256,7 +256,7 @@ export class ScrapeNinja implements INodeType {
 				name: 'blockImages',
 				type: 'boolean',
 				default: false,
-				description: 'Block images in real Chrome to speed up loading.',
+				description: 'Whether to block images in real Chrome to speed up loading',
 				displayOptions: {
 					show: {
 						operation: ['scrape-js'],
@@ -264,11 +264,11 @@ export class ScrapeNinja implements INodeType {
 				},
 			},
 			{
-				displayName: 'Block Media (CSS, fonts)',
+				displayName: 'Block Media (CSS, Fonts)',
 				name: 'blockMedia',
 				type: 'boolean',
 				default: false,
-				description: 'Block CSS/fonts in real Chrome to speed up loading.',
+				description: 'Whether to block CSS/fonts in real Chrome to speed up loading',
 				displayOptions: {
 					show: {
 						operation: ['scrape-js'],
@@ -280,7 +280,7 @@ export class ScrapeNinja implements INodeType {
 				name: 'screenshot',
 				type: 'boolean',
 				default: false,
-				description: 'Take a screenshot of the page. Slower if true.',
+				description: 'Whether to take a screenshot of the page. Slower if true.',
 				displayOptions: {
 					show: {
 						operation: ['scrape-js'],
@@ -292,7 +292,7 @@ export class ScrapeNinja implements INodeType {
 				name: 'catchAjaxHeadersUrlMask',
 				type: 'string',
 				default: '',
-				description: 'If set, tries to catch/dump specific XHR requests/responses that match this mask.',
+				description: 'If set, tries to catch/dump specific XHR requests/responses that match this mask',
 				displayOptions: {
 					show: {
 						operation: ['scrape-js'],
