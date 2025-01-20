@@ -1,19 +1,20 @@
 {
-  "name": "n8n-nodes-<...>",
+  "name": "n8n-nodes-scrapeninja",
   "version": "0.1.0",
-  "description": "",
+  "description": "ScrapeNinja Web Scraping API node for n8n",
   "keywords": [
     "n8n-community-node-package"
   ],
   "license": "MIT",
-  "homepage": "",
+  "homepage": "https://scrapeninja.net/docs/n8n/",
   "author": {
-    "name": "",
-    "email": ""
+    "name": "Anthony S",
+    "email": "contact@scrapeninja.net",
+    "url": "https://scrapeninja.net"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/<...>/n8n-nodes-<...>.git"
+    "url": "https://github.com/restyler/n8n-nodes-scrapeninja.git"
   },
   "engines": {
     "node": ">=18.10",
@@ -36,12 +37,10 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/ExampleCredentialsApi.credentials.js",
-      "dist/credentials/HttpBinApi.credentials.js"
+      "dist/credentials/ScrapeNinjaApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/ExampleNode/ExampleNode.node.js",
-      "dist/nodes/HttpBin/HttpBin.node.js"
+      "dist/nodes/ScrapeNinja/ScrapeNinja.node.js"
     ]
   },
   "devDependencies": {
