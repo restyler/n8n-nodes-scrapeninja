@@ -173,8 +173,8 @@ export class ScrapeNinja implements INodeType {
 					multipleValues: true,
 					multipleValueButtonText: 'Add Status Code',
 				},
-				default: [403, 502],
-				description: 'HTTP statuses that will trigger a retry with another proxy',
+				default: [], // eslint-disable-line
+				description: 'HTTP statuses that will trigger a retry with another proxy. By default, 403 and 502 are included in retries.',
 			},
 			{
 				displayName: 'Extractor (Custom JS)',
@@ -322,7 +322,7 @@ export class ScrapeNinja implements INodeType {
 				const geo = this.getNodeParameter('geo', i, 'us') as string;
 				const proxy = geo === '_custom' ? this.getNodeParameter('proxy', i, '') as string : '';
 				const textNotExpected = this.getNodeParameter('textNotExpected', i, []) as string[];
-				const statusNotExpected = this.getNodeParameter('statusNotExpected', i, [403, 502]) as number[];
+				const statusNotExpected = this.getNodeParameter('statusNotExpected', i, []) as number[];
 				const extractor = this.getNodeParameter('extractor', i, '') as string;
 
 				const timeout = operation === 'scrape' 
@@ -335,10 +335,14 @@ export class ScrapeNinja implements INodeType {
 					headers: customHeaders,
 					retryNum,
 					textNotExpected,
-					statusNotExpected,
 					extractor,
 					timeout,
 				};
+
+				// Add statusNotExpected only if not empty
+				if (statusNotExpected.length > 0) {
+					body.statusNotExpected = statusNotExpected;
+				}
 
 				// Add geo only if not using custom proxy
 				if (geo !== '_custom') {
