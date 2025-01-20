@@ -56,7 +56,7 @@ export class ScrapeNinja implements INodeType {
 				type: 'string',
 				default: '',
 				placeholder: 'https://example.com',
-				description: 'URL to scrape. Use https://myip.scrapeninja.net/ to see the IP address and geo location of your request. Use https://apiroad.net/post-JSON.php to test what headers you send and what IP address you get',
+				description: 'URL to scrape. Use https://myip.scrapeninja.net/ to see the IP address and geo location of your request. Use https://apiroad.net/post-json.php to test what headers you send and what IP address you get', // eslint-disable-line
 				required: true,
 			},
 			{
@@ -69,7 +69,9 @@ export class ScrapeNinja implements INodeType {
 				},
 				default: [],
 				placeholder: 'X-Header: some-random-header',
-				description: 'Custom request headers (one per line: "HeaderName: value"). Adding User-Agent and other basic headers is NOT recommended header, they will be added automatically by ScrapeNinja. If you want to see which headers ScrapeNinja adds by default, try to scrape https://apiroad.net/post-JSON.php',
+				description: 'Custom request headers (one per line: "HeaderName: value"). Adding User-Agent and other basic headers is ' +
+					'NOT recommended, they will be added automatically by ScrapeNinja. ' +
+					'If you want to see which headers ScrapeNinja adds by default, try to scrape https://apiroad.net/post-json.php', // eslint-disable-line
 			},
 			{
 				displayName: 'Retry Count',
