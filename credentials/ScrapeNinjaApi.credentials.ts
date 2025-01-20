@@ -4,7 +4,7 @@ import {
 } from 'n8n-workflow';
 
 export class ScrapeNinjaApi implements ICredentialType {
-	name = 'scrapeninja';
+	name = 'scrapeNinjaApi';
 	displayName = 'ScrapeNinja API';
 	properties: INodeProperties[] = [
 		{
@@ -36,4 +36,4 @@ export class ScrapeNinjaApi implements ICredentialType {
 			description: 'The API key (X-RapidAPI-Key for RapidAPI or X-Apiroad-Key for APIRoad)',
 		},
 	];
-} 
+}

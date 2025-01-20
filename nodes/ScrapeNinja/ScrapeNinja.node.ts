@@ -6,7 +6,7 @@ import type {
 	IHttpRequestMethods,
 	IDataObject,
 } from 'n8n-workflow';
-import { NodeOperationError } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 export class ScrapeNinja implements INodeType {
 	description: INodeTypeDescription = {
@@ -23,7 +23,7 @@ export class ScrapeNinja implements INodeType {
 		outputs: ['main'],
 		credentials: [
 			{
-				name: 'scrapeninja',
+				name: 'scrapeninjaApi',
 				required: true,
 			},
 		],
@@ -32,16 +32,19 @@ export class ScrapeNinja implements INodeType {
 				displayName: 'Operation',
 				name: 'operation',
 				type: 'options',
+				noDataExpression: true,
 				options: [
 					{
-						name: 'Scrape (no JS)',
+						name: 'Scrape (No JS)',
 						value: 'scrape',
 						description: 'High-performance, no-JS endpoint',
+						action: 'High-performance, no-JS endpoint',
 					},
 					{
 						name: 'Scrape with JS',
 						value: 'scrape-js',
-						description: 'Real Chrome rendering with JavaScript. Takes screenshots. 3x slower.',
+						description: 'Real Chrome rendering with JavaScript. Takes screenshots. 3x slower',
+						action: 'Real Chrome rendering with JavaScript. Takes screenshots. 3x slower',
 					},
 				],
 				default: 'scrape',
@@ -53,7 +56,7 @@ export class ScrapeNinja implements INodeType {
 				type: 'string',
 				default: '',
 				placeholder: 'https://example.com',
-				description: 'URL to scrape.\nUse https://myip.scrapeninja.net/ to see the IP address and geo location of your request.\nUse https://apiroad.net/post-json.php to test what headers you send and what IP address you get.',
+				description: 'URL to scrape. Use https://myip.scrapeninja.net/ to see the IP address and geo location of your request. Use https://apiroad.net/post-json.php to test what headers you send and what IP address you get',
 				required: true,
 			},
 			{
@@ -73,7 +76,7 @@ export class ScrapeNinja implements INodeType {
 				name: 'retryNum',
 				type: 'number',
 				default: 1,
-				description: 'Number of retry attempts if certain conditions fail (some HTTP failure, or "Text Not Expected" occurence, or "Status Not Expected" occurence).',
+				description: 'Number of retry attempts if certain conditions fail (some HTTP failure, or "Text Not Expected" occurence, or "Status Not Expected" occurence)',
 			},
 			{
 				displayName: 'Geo Location',
@@ -81,36 +84,36 @@ export class ScrapeNinja implements INodeType {
 				type: 'options',
 				options: [
 					{
-						name: 'United States',
-						value: 'us',
-					},
-					{
-						name: 'Europe',
-						value: 'eu',
-					},
-					{
-						name: 'Germany',
-						value: 'de',
-					},
-					{
-						name: 'France',
-						value: 'fr',
-					},
-					{
-						name: 'Brazil',
-						value: 'br',
+						name: '[Custom or Premium Proxy]',
+						value: '_custom',
 					},
 					{
 						name: 'Australia',
 						value: 'au',
 					},
 					{
-						name: '[Custom or Premium Proxy]',
-						value: '_custom',
+						name: 'Brazil',
+						value: 'br',
+					},
+					{
+						name: 'Europe',
+						value: 'eu',
+					},
+					{
+						name: 'France',
+						value: 'fr',
+					},
+					{
+						name: 'Germany',
+						value: 'de',
+					},
+					{
+						name: 'United States',
+						value: 'us',
 					},
 				],
 				default: 'us',
-				description: 'Proxy geo location or custom proxy. Note that each attempt will be made from a different IP address if using "Geo" option.',
+				description: 'Proxy geo location or custom proxy. Note that each attempt will be made from a different IP address if using "Geo" option',
 			},
 			{
 				displayName: 'Custom Proxy URL',
@@ -303,10 +306,9 @@ export class ScrapeNinja implements INodeType {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
-		// Get credentials with proper typing
-		const credentials = await this.getCredentials('scrapeninja') as IDataObject;
+		const credentials = await this.getCredentials('scrapeninjaApi') as IDataObject;
 		if (!credentials?.apiKey) {
-			throw new Error('No ScrapeNinja API Key found in credentials!');
+			throw new NodeOperationError(this.getNode(), 'No ScrapeNinja API Key found in credentials!');
 		}
 
 		for (let i = 0; i < items.length; i++) {
@@ -406,19 +408,12 @@ export class ScrapeNinja implements INodeType {
 					if (error.response) {
 						if (error.response.status === 403) {
 							const marketplaceName = marketplace === 'rapidapi' ? 'RapidAPI' : 'APIRoad';
-							throw new Error(
-								`${marketplaceName} returned 403 Forbidden - This usually means your API key is invalid or has expired. Response: ${JSON.stringify(
-									error.response.data,
-								)}`,
-							);
+							throw new NodeApiError(this.getNode(), error, {
+								message: `${marketplaceName} returned 403 Forbidden - This usually means your API key is invalid or has expired`,
+								description: JSON.stringify(error.response.data),
+							});
 						}
-						throw new Error(
-							`Request failed with status ${error.response.status}: ${JSON.stringify({
-								data: error.response.data,
-								headers: error.response.headers,
-								statusCode: error.response.status,
-							})}`,
-						);
+						throw new NodeApiError(this.getNode(), error);
 					}
 					throw error;
 				}
