@@ -173,7 +173,7 @@ export class ScrapeNinja implements INodeType {
 					multipleValues: true,
 					multipleValueButtonText: 'Add Status Code',
 				},
-				default: 0,
+				default: ['403', '502'],
 				description: 'HTTP statuses that will trigger a retry with another proxy',
 			},
 			{
