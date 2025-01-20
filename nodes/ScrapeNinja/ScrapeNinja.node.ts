@@ -41,7 +41,7 @@ export class ScrapeNinja implements INodeType {
 					{
 						name: 'Scrape with JS',
 						value: 'scrape-js',
-						description: 'Real Chrome rendering with JavaScript',
+						description: 'Real Chrome rendering with JavaScript. Takes screenshots. 3x slower.',
 					},
 				],
 				default: 'scrape',
