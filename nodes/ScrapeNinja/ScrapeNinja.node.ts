@@ -23,7 +23,7 @@ export class ScrapeNinja implements INodeType {
 		outputs: ['main'],
 		credentials: [
 			{
-				name: 'scrapeninjaApi',
+				name: 'scrapeNinjaApi',
 				required: true,
 			},
 		],
@@ -308,7 +308,7 @@ export class ScrapeNinja implements INodeType {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
-		const credentials = await this.getCredentials('scrapeninjaApi') as IDataObject;
+		const credentials = await this.getCredentials('scrapeNinjaApi') as IDataObject;
 		if (!credentials?.apiKey) {
 			throw new NodeOperationError(this.getNode(), 'No ScrapeNinja API Key found in credentials!');
 		}
