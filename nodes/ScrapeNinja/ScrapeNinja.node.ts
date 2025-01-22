@@ -301,6 +301,47 @@ export class ScrapeNinja implements INodeType {
 					},
 				},
 			},
+			{
+				displayName: 'Post-Load Wait Time',
+				name: 'postWaitTime',
+				type: 'number',
+				typeOptions: {
+					minValue: 0,
+					maxValue: 12,
+				},
+				default: 0,
+				placeholder: '5',
+				description: 'Wait for specified amount of seconds after page load (from 1 to 12s). Use this only if ScrapeNinja failed to wait for required page elements automatically.',
+				displayOptions: {
+					show: {
+						operation: ['scrape-js'],
+					},
+				},
+				required: false,
+			},
+			{
+				displayName: 'Viewport Settings (JSON)',
+				name: 'viewport',
+				type: 'string',
+				typeOptions: {
+					rows: 4,
+				},
+				default: '',
+				placeholder: `{
+  "width": 1920,
+  "height": 1080,
+  "deviceScaleFactor": 1,
+  "isMobile": false,
+  "hasTouch": false,
+  "isLandscape": false
+}`,
+				description: 'Advanced. Set custom viewport size. By default, viewport size is 1920x1080. Provide a valid JSON object with viewport settings.',
+				displayOptions: {
+					show: {
+						operation: ['scrape-js'],
+					},
+				},
+			},
 		],
 	};
 
@@ -370,6 +411,30 @@ export class ScrapeNinja implements INodeType {
 					body.blockMedia = this.getNodeParameter('blockMedia', i, false) as boolean;
 					body.screenshot = this.getNodeParameter('screenshot', i, false) as boolean;
 					body.catchAjaxHeadersUrlMask = this.getNodeParameter('catchAjaxHeadersUrlMask', i, '') as string;
+					
+					// Add postWaitTime only if greater than 0
+					const postWaitTime = this.getNodeParameter('postWaitTime', i, 0) as number;
+					if (postWaitTime > 0) {
+						body.postWaitTime = postWaitTime;
+					}
+
+					// Add viewport if it's set and valid JSON
+					const viewportString = this.getNodeParameter('viewport', i, '') as string;
+					if (viewportString.trim() !== '') {
+						try {
+							const viewport = JSON.parse(viewportString);
+							if (typeof viewport !== 'object' || viewport === null) {
+								throw new NodeOperationError(this.getNode(), 'Viewport must be a valid JSON object', {
+									itemIndex: i,
+								});
+							}
+							body.viewport = viewport;
+						} catch (e) {
+							throw new NodeOperationError(this.getNode(), 'Invalid viewport JSON provided', {
+								itemIndex: i,
+							});
+						}
+					}
 				}
 
 				// Decide endpoint based on marketplace
