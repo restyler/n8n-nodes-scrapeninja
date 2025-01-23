@@ -317,7 +317,6 @@ export class ScrapeNinja implements INodeType {
 						operation: ['scrape-js'],
 					},
 				},
-				required: false,
 			},
 			{
 				displayName: 'Viewport Settings (JSON)',
