@@ -1,6 +1,6 @@
 
 
-<img src="https://raw.githubusercontent.com/restyler/n8n-nodes-scrapeninja/master/img/n8n-loves-scrapeninja.png" width="400" alt="ScrapeNinja Official n8n Integration" />
+<img src="https://raw.githubusercontent.com/restyler/n8n-nodes-scrapeninja/master/img/n8n-loves-scrapeninja.png" width="500" alt="ScrapeNinja Official n8n Integration" />
 
 # ScrapeNinja n8n Action Node
 
