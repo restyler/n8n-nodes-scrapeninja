@@ -16,6 +16,7 @@ export class ScrapeNinja implements INodeType {
 		group: ['transform'],
 		version: 1,
 		description: 'Consume ScrapeNinja Web Scraping API - See full documentation at https://scrapeninja.net/docs/',
+		subtitle: '={{ $parameter["operation"] + ": " + $parameter["resource"] }}',
 		defaults: {
 			name: 'ScrapeNinja',
 		},
@@ -49,7 +50,7 @@ export class ScrapeNinja implements INodeType {
                         name: 'Scrape (No JS)',
                         value: 'scrape',
                         description: 'High-performance, no-JS endpoint. Performs raw network request with TLS fingerprint of a real browser.',
-                        action: 'Scrape faster without Javascript',
+                        action: 'Scrape faster without javascript',
                     },
                     {
                         name: 'Scrape as a Real Browser',

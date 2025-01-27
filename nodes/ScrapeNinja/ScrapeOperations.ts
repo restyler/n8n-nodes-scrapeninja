@@ -9,7 +9,7 @@ export const scrapeProperties: INodeProperties[] = [
 		type: 'string',
 		default: '',
 		placeholder: 'https://example.com',
-		description: 'URL to scrape. Use https://myip.scrapeninja.net/ to see the IP address and geo location of your request. Use https://apiroad.net/post-json.php to test what headers you send and what IP address you get',
+		description: 'URL to scrape. Use https://myip.scrapeninja.net/ to see the IP address and geo location of your request. Use https://apiroad.net/post-json.php to test what headers you send and what IP address you get', // eslint-disable-line
 		required: true,
 		displayOptions: {
 			show: {
@@ -128,7 +128,7 @@ export const scrapeProperties: INodeProperties[] = [
 			multipleValues: true,
 			multipleValueButtonText: 'Add Status Code',
 		},
-		default: [],
+		default: [], // eslint-disable-line
 		description: 'HTTP statuses that will trigger a retry with another proxy. By default, 403 and 502 are included in retries.',
 		displayOptions: {
 			show: {
@@ -150,7 +150,7 @@ export const scrapeProperties: INodeProperties[] = [
         title: $('h1:first').text().trim()
     };
 }`,
-		description: 'Custom JS function for extracting JSON from HTML. See docs and playground at https://scrapeninja.net/docs/js-extractor/ The function receives page HTML as "input" and Cheerio parser as "cheerio". Must return a JSON object.',
+		description: 'Custom JS function for extracting data from HTML. See docs and playground at https://scrapeninja.net/docs/js-extractor/ The function receives page HTML as "input" and Cheerio parser as "cheerio". Must return a JSON object.',
 		noDataExpression: true,
 		displayOptions: {
 			show: {
