@@ -7,6 +7,8 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 import { extractContentProperties, executeExtractContent } from './ExtractContent';
 import { scrapeProperties, scrapeJsProperties, executeScrape } from './ScrapeOperations';
+import { cleanupHtmlProperties, executeCleanupHtml } from './CleanupHtml';
+import { extractCustomProperties, executeExtractCustom } from './ExtractCustom';
 
 export class ScrapeNinja implements INodeType {
 	description: INodeTypeDescription = {
@@ -16,7 +18,7 @@ export class ScrapeNinja implements INodeType {
 		group: ['transform'],
 		version: 1,
 		description: 'Consume ScrapeNinja Web Scraping API - See full documentation at https://scrapeninja.net/docs/',
-		subtitle: '={{ $parameter["operation"] + ": " + $parameter["resource"] }}',
+		subtitle: '={{ $parameter["operation"] }}',
 		defaults: {
 			name: 'ScrapeNinja',
 		},
@@ -41,6 +43,18 @@ export class ScrapeNinja implements INodeType {
 				noDataExpression: true,
 				options: [
                     {
+                        name: 'Clean Up HTML',
+                        value: 'cleanup-html',
+                        description: 'Clean up and compress HTML content',
+                        action: 'Clean up HTML content',
+                    },
+                    {
+                        name: 'Extract Custom',
+                        value: 'extract-custom',
+                        description: 'Extract data using custom JavaScript function',
+                        action: 'Extract data using custom JavaScript',
+                    },
+                    {
                         name: 'Extract Primary Content',
                         value: 'extract-content',
                         description: 'Extract primary page content from HTML',
@@ -64,6 +78,10 @@ export class ScrapeNinja implements INodeType {
 			},
 			// Extract Content operation parameters
 			...extractContentProperties,
+			// Extract Custom operation parameters
+			...extractCustomProperties,
+			// Cleanup HTML operation parameters
+			...cleanupHtmlProperties,
 			// Scraping operation parameters
 			...scrapeProperties,
 			// Additional parameters for scrape-js operation
@@ -81,6 +99,18 @@ export class ScrapeNinja implements INodeType {
 
 				if (operation === 'extract-content') {
 					const result = await executeExtractContent.call(this, items, i);
+					returnData.push(result);
+					continue;
+				}
+
+				if (operation === 'cleanup-html') {
+					const result = await executeCleanupHtml.call(this, items, i);
+					returnData.push(result);
+					continue;
+				}
+
+				if (operation === 'extract-custom') {
+					const result = await executeExtractCustom.call(this, items, i);
 					returnData.push(result);
 					continue;
 				}
