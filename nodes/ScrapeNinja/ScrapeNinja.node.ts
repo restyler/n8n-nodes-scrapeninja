@@ -51,8 +51,8 @@ export class ScrapeNinja implements INodeType {
                     {
                         name: 'Extract Custom',
                         value: 'extract-custom',
-                        description: 'Extract data using custom JavaScript function',
-                        action: 'Extract data using custom JavaScript',
+                        description: 'Extract data using custom javascript function',
+                        action: 'Extract data using custom javascript',
                     },
                     {
                         name: 'Extract Primary Content',
