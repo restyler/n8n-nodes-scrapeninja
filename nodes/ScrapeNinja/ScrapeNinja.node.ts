@@ -9,6 +9,7 @@ import { extractContentProperties, executeExtractContent } from './ExtractConten
 import { scrapeProperties, scrapeJsProperties, executeScrape } from './ScrapeOperations';
 import { cleanupHtmlProperties, executeCleanupHtml } from './CleanupHtml';
 import { extractCustomProperties, executeExtractCustom } from './ExtractCustom';
+import { crawlerProperties, executeCrawler } from './CrawlerOperations';
 
 export class ScrapeNinja implements INodeType {
 	description: INodeTypeDescription = {
@@ -30,7 +31,16 @@ export class ScrapeNinja implements INodeType {
 				required: false,
 				displayOptions: {
 					show: {
-						operation: ['scrape', 'scrape-js'],
+						operation: ['scrape', 'scrape-js', 'crawler-start', 'crawler-resume'],
+					},
+				},
+			},
+			{
+				name: 'postgres',
+				required: true,
+				displayOptions: {
+					show: {
+						operation: ['crawler-start', 'crawler-resume', 'crawler-pause'],
 					},
 				},
 			},
@@ -47,6 +57,24 @@ export class ScrapeNinja implements INodeType {
                         value: 'cleanup-html',
                         description: 'Clean up and compress HTML content',
                         action: 'Clean up HTML content',
+                    },
+                    {
+                        name: 'Crawler: Pause',
+                        value: 'crawler-pause',
+                        description: 'Pause an active crawl',
+                        action: 'Pause an active crawl',
+                    },
+                    {
+                        name: 'Crawler: Resume',
+                        value: 'crawler-resume',
+                        description: 'Resume an existing crawl',
+                        action: 'Resume an existing crawl',
+                    },
+                    {
+                        name: 'Crawler: Start',
+                        value: 'crawler-start',
+                        description: 'Start a new crawling process',
+                        action: 'Start a new crawling process',
                     },
                     {
                         name: 'Extract Custom',
@@ -86,6 +114,20 @@ export class ScrapeNinja implements INodeType {
 			...scrapeProperties,
 			// Additional parameters for scrape-js operation
 			...scrapeJsProperties,
+			// Crawler operation parameters
+			...crawlerProperties,
+			{
+				displayName: 'Crawl External URLs',
+				name: 'crawlExternal',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to crawl URLs from different domains than the starting URL',
+				displayOptions: {
+					show: {
+						operation: ['crawler'],
+					},
+				},
+			},
 		],
 	};
 
@@ -111,6 +153,12 @@ export class ScrapeNinja implements INodeType {
 
 				if (operation === 'extract-custom') {
 					const result = await executeExtractCustom.call(this, items, i);
+					returnData.push(result);
+					continue;
+				}
+
+				if (operation.startsWith('crawler-')) {
+					const result = await executeCrawler.call(this, items, i);
 					returnData.push(result);
 					continue;
 				}
