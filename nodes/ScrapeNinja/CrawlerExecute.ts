@@ -32,9 +32,15 @@ function shouldProcessUrl(url: string, includePatterns: string[], excludePattern
 	// If no include patterns are specified, include all URLs by default
 	let shouldInclude = includePatterns.length === 0;
 
+	// Convert URL to a format that works better with minimatch
+	const urlForMatching = url.replace(/^https?:\/\//, '');
+
 	// Check include patterns
 	for (const pattern of includePatterns) {
-		if (minimatch(url, pattern)) {
+		// Remove protocol from pattern if present
+		const cleanPattern = pattern.replace(/^https?:\/\//, '');
+		
+		if (minimatch(urlForMatching, cleanPattern)) {
 			shouldInclude = true;
 			break;
 		}
@@ -42,7 +48,10 @@ function shouldProcessUrl(url: string, includePatterns: string[], excludePattern
 
 	// Check exclude patterns - these take precedence over include patterns
 	for (const pattern of excludePatterns) {
-		if (minimatch(url, pattern)) {
+		// Remove protocol from pattern if present
+		const cleanPattern = pattern.replace(/^https?:\/\//, '');
+		
+		if (minimatch(urlForMatching, cleanPattern)) {
 			return false;
 		}
 	}
@@ -50,7 +59,7 @@ function shouldProcessUrl(url: string, includePatterns: string[], excludePattern
 	return shouldInclude;
 }
 
-// Add custom logger that writes to DB
+// Update logToCrawler function to handle all log levels
 async function logToCrawler(
 	this: IExecuteFunctions,
 	db: IDatabase<any>,
@@ -62,7 +71,7 @@ async function logToCrawler(
 	// Log to n8n logger
 	this.logger[level](message, { ...metadata, runId });
 
-	// Log to database
+	// Always log to database regardless of level
 	await db.none(
 		`INSERT INTO crawler_logs (run_id, level, message, metadata) 
 		VALUES ($1, $2, $3, $4)`,
@@ -109,13 +118,12 @@ export async function processCrawlerQueue(
 	crawlExternal: boolean = false,
 ): Promise<void> {
 	const log = logToCrawler.bind(this, db, runId);
-	await log('info', `Starting crawler process for run "${runId}"`, { maxDepth, maxPages });
+	log('info', `Starting crawler process for run "${runId}"`, { maxDepth, maxPages });
 	let processedPages = 0;
 
 	try {
 		while (processedPages < maxPages) {
-			// Get next URL from queue using a transaction
-			this.logger.debug(`Fetching next URL to process for run "${runId}"`, { runId, processedPages });
+			log('debug', `Fetching next URL to process for run "${runId}"`, { runId, processedPages });
 			const queueItem = await db.tx(async (t: ITask<any>) => {
 				const queueResult = await t.oneOrNone<ICrawlerQueue>(
 					`UPDATE crawler_queue 
@@ -131,7 +139,7 @@ export async function processCrawlerQueue(
 				);
 
 				if (!queueResult) {
-					this.logger.info(`No more URLs to process for run "${runId}", marking as completed`, { runId });
+					log('info', `No more URLs to process for run "${runId}", marking as completed`, { runId });
 					await t.none(
 						'UPDATE crawler_runs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
 						['completed', runId],
@@ -139,7 +147,7 @@ export async function processCrawlerQueue(
 					return null;
 				}
 
-				this.logger.debug(`Selected URL "${queueResult.url}" for processing`, { 
+				log('debug', `Selected URL "${queueResult.url}" for processing`, { 
 					runId,
 					url: queueResult.url,
 					depth: queueResult.depth,
@@ -150,6 +158,9 @@ export async function processCrawlerQueue(
 
 			if (!queueItem) break;
 
+			// Move requestStartTime declaration outside try block
+			let requestStartTime = Date.now();
+
 			try {
 				// Check if run is still active
 				const runStatus = await db.oneOrNone<{ status: string }>(
@@ -158,11 +169,15 @@ export async function processCrawlerQueue(
 				);
 
 				if (!runStatus || runStatus.status !== 'running') {
-					this.logger.info(`Crawler run "${runId}" is no longer active (status: ${runStatus?.status})`, { runId });
+					log('info', `Crawler run "${runId}" is no longer active (status: ${runStatus?.status})`, { runId });
 					break;
 				}
 
-				this.logger.debug(`Fetching page "${queueItem.url}" using ScrapeNinja`, { runId, url: queueItem.url });
+				log('debug', `Fetching page "${queueItem.url}" using ScrapeNinja`, { runId, url: queueItem.url });
+				
+				// Reset timer just before the actual request
+				requestStartTime = Date.now();
+
 				// Use ScrapeNinja to fetch the page
 				const credentials = await this.getCredentials('scrapeNinjaApi');
 				
@@ -184,12 +199,11 @@ export async function processCrawlerQueue(
 					headers['X-Apiroad-Key'] = credentials.apiKey as string;
 				}
 
-				// add debug of what request is sent and where
-				this.logger.debug(`Sending request to ${endpoint}`, { 
+				// Log request info without sensitive data
+				log('debug', `Sending request to ${endpoint}`, { 
 					runId,
 					url: queueItem.url,
-					headers,
-					marketplace,
+					marketplace, // only log marketplace type, not credentials
 				});
 
 				const scrapeResult = await this.helpers.httpRequest({
@@ -202,6 +216,9 @@ export async function processCrawlerQueue(
 					},
 					json: true,
 				}) as IScrapeResult;
+
+				// Calculate request latency
+				const requestLatencyMs = Date.now() - requestStartTime;
 
 				// Store response data
 				await db.none(
@@ -223,8 +240,7 @@ export async function processCrawlerQueue(
 				const links = new Set<string>();
 				const baseHostname = new URL(queueItem.url).hostname;
 
-				// Log the response info for debugging
-				this.logger.debug(`ScrapeNinja response info for "${queueItem.url}"`, { 
+				log('debug', `ScrapeNinja response info for "${queueItem.url}"`, { 
 					runId,
 					url: queueItem.url,
 					statusCode: scrapeResult.info.statusCode,
@@ -241,7 +257,6 @@ export async function processCrawlerQueue(
 
 						// Handle relative URLs
 						let url: URL;
-						// Use finalUrl if available, otherwise fall back to original URL
 						const baseUrl = scrapeResult.info.finalUrl || queueItem.url;
 
 						try {
@@ -252,7 +267,7 @@ export async function processCrawlerQueue(
 								// Then try as relative URL
 								url = new URL(href, baseUrl);
 							} catch (e) {
-								this.logger.debug(`Invalid URL: "${href}" (base: ${baseUrl})`, { 
+								log('debug', `Invalid URL: "${href}" (base: ${baseUrl})`, { 
 									runId, 
 									parentUrl: queueItem.url,
 									reason: e.message,
@@ -271,14 +286,18 @@ export async function processCrawlerQueue(
 							return;
 						}
 
+						// Normalize URL by removing hash fragment
+						url.hash = '';
+						const normalizedUrl = url.href;
+
 						// Check URL patterns
-						if (shouldProcessUrl(url.href, includePatterns, excludePatterns)) {
-							links.add(url.href);
+						if (shouldProcessUrl(normalizedUrl, includePatterns, excludePatterns)) {
+							links.add(normalizedUrl);
 						}
 					}
 				});
 
-				this.logger.debug(`Found ${links.size} links on page "${queueItem.url}"`, { 
+				log('debug', `Found ${links.size} links on page "${queueItem.url}"`, { 
 					runId,
 					url: queueItem.url,
 					linksCount: links.size,
@@ -295,27 +314,40 @@ export async function processCrawlerQueue(
 							ON crawler_queue(run_id, url);
 						`);
 
-						const queries = Array.from(links).map(async (link) => {
-							// Check if URL has already been processed or queued for this run
-							const exists = await t.oneOrNone(
-								'SELECT id FROM crawler_queue WHERE run_id = $1 AND url = $2',
-								[runId, link],
+						// Get all existing URLs for this run in one query
+						const existingUrls = new Set(
+							(await t.manyOrNone<{ url: string }>(
+								'SELECT url FROM crawler_queue WHERE run_id = $1',
+								[runId],
+							)).map(row => row.url)
+						);
+
+						// Filter out existing URLs
+						const newLinks = Array.from(links).filter(link => !existingUrls.has(link));
+						linksQueued = newLinks.length;
+
+						if (linksQueued > 0) {
+							// Prepare batch insert values
+							const values = newLinks.map(link => ({
+								run_id: runId,
+								url: link,
+								status: 'pending',
+								parent_url: queueItem.url,
+								depth: queueItem.depth + 1,
+							}));
+
+							// Insert all new URLs in one query
+							await t.none(
+								`INSERT INTO crawler_queue 
+								(run_id, url, status, parent_url, depth) 
+								SELECT v.run_id, v.url, v.status, v.parent_url, v.depth 
+								FROM jsonb_to_recordset($1) AS v(run_id int, url text, status text, parent_url text, depth int)`,
+								[JSON.stringify(values)],
 							);
-
-							if (!exists) {
-								linksQueued++;
-								return t.none(
-									'INSERT INTO crawler_queue (run_id, url, status, parent_url, depth) VALUES ($1, $2, $3, $4, $5)',
-									[runId, link, 'pending', queueItem.url, queueItem.depth + 1],
-								);
-							}
-							return undefined;
-						});
-
-						await t.batch(queries.filter((q) => q !== undefined));
+						}
 					});
 
-					this.logger.debug(`Queued ${linksQueued} new URLs for crawling`, { 
+					log('debug', `Queued ${linksQueued} new URLs for crawling`, { 
 						runId,
 						parentUrl: queueItem.url,
 						linksQueued,
@@ -341,8 +373,8 @@ export async function processCrawlerQueue(
 					[runId],
 				);
 
-				// Log progress
-				this.logger.info(`Successfully processed page "${queueItem.url}"`, {
+				// Add latency to success log
+				log('info', `Successfully processed page "${queueItem.url}"`, {
 					url: queueItem.url,
 					status: 'completed',
 					parent_url: queueItem.parent_url,
@@ -352,20 +384,20 @@ export async function processCrawlerQueue(
 					run_id: runId,
 					processed_pages: processedPages + 1,
 					max_pages: maxPages,
+					latency_ms: requestLatencyMs,
 					queue_stats: {
 						total: parseInt(stats.total),
 						pending: parseInt(stats.pending),
 						completed: parseInt(stats.completed),
 						failed: parseInt(stats.failed),
 					},
-					timestamp: new Date().toISOString(),
 				});
 
 				processedPages++;
 
 				// Break if we've reached maxPages
 				if (processedPages >= maxPages) {
-					await log('info', `Reached maximum pages (${maxPages}), stopping crawler`, { 
+					log('info', `Reached maximum pages (${maxPages}), stopping crawler`, { 
 						processedPages,
 						maxPages,
 					});
@@ -373,11 +405,42 @@ export async function processCrawlerQueue(
 					break;
 				}
 			} catch (error) {
-				this.logger.error(`Failed to process page "${queueItem.url}"`, { 
+				// Calculate latency even for failed requests
+				const requestLatencyMs = Date.now() - requestStartTime;
+
+				// Try to extract response details for errors
+				let errorDetails = error.message;
+				let errorResponse = null;
+				let statusCode = error.response?.statusCode;
+				
+				if (error.response) {
+					try {
+						// Handle both string and object responses
+						if (typeof error.response.body === 'string') {
+							try {
+								errorResponse = JSON.parse(error.response.body);
+							} catch {
+								errorResponse = { body: error.response.body };
+							}
+						} else {
+							errorResponse = error.response.body;
+						}
+					} catch (e) {
+						errorResponse = { 
+							raw: error.response.body,
+							parse_error: e.message 
+						};
+					}
+				}
+
+				log('error', `Failed to process page "${queueItem.url}"`, { 
 					runId,
 					url: queueItem.url,
-					error: error.message,
+					error: errorDetails,
+					error_response: errorResponse,
+					status_code: statusCode,
 					depth: queueItem.depth,
+					latency_ms: requestLatencyMs,
 				});
 
 				// Mark URL as failed and check failure count in a transaction
@@ -393,7 +456,7 @@ export async function processCrawlerQueue(
 					);
 
 					if (failedCount.count > 10) {
-						this.logger.warn(`Too many failed requests (${failedCount.count}) for run "${runId}", stopping crawler`, {
+						log('warn', `Too many failed requests (${failedCount.count}) for run "${runId}", stopping crawler`, {
 							runId,
 							failedCount: failedCount.count,
 						});
@@ -419,8 +482,7 @@ export async function processCrawlerQueue(
 					[runId],
 				);
 
-				// Log error details
-				this.logger.error(`Error details for failed page "${queueItem.url}"`, {
+				log('error', `Error details for failed page "${queueItem.url}"`, {
 					url: queueItem.url,
 					status: 'failed',
 					parent_url: queueItem.parent_url,
@@ -429,16 +491,17 @@ export async function processCrawlerQueue(
 					run_id: runId,
 					processed_pages: processedPages,
 					max_pages: maxPages,
+					latency_ms: requestLatencyMs,
 					queue_stats: {
 						total: parseInt(stats.total),
 						pending: parseInt(stats.pending),
 						completed: parseInt(stats.completed),
 						failed: parseInt(stats.failed),
 					},
-					timestamp: new Date().toISOString(),
 				});
 
 				if (shouldStopCrawling) {
+					log('error', 'Too many failed requests, stopping crawler');
 					await cancelRemainingItems(db, runId, 'Too many failed requests');
 					throw new NodeOperationError(this.getNode(), 'Too many failed requests, stopping crawler');
 				}

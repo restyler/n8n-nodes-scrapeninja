@@ -4,7 +4,7 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import pgPromise, { ITask } from 'pg-promise';
+import pgPromise, { IDatabase, ITask } from 'pg-promise';
 import { processCrawlerQueue } from './CrawlerExecute';
 
 interface ICrawlerRun {
@@ -18,6 +18,7 @@ interface ICrawlerRun {
 	crawl_external: boolean;
 	created_at: Date;
 	updated_at: Date;
+	completed_at: Date | null;
 }
 
 export const crawlerProperties: INodeProperties[] = [
@@ -114,6 +115,18 @@ export const crawlerProperties: INodeProperties[] = [
 			},
 		},
 	},
+	{
+		displayName: 'Include HTML of Scraped Pages',
+		name: 'includeHtml',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to include HTML content in the results. WARNING: Only enable this if crawling less than 30 pages! For larger crawls, use the Postgres node to retrieve HTML by page ID from crawler_queue table.',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start', 'crawler-resume'],
+			},
+		},
+	},
 ];
 
 const createTablesSQL = `
@@ -128,7 +141,8 @@ CREATE TABLE IF NOT EXISTS crawler_runs (
 	exclude_patterns TEXT[] DEFAULT '{}',
 	crawl_external BOOLEAN DEFAULT false,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+	completed_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Create crawler queue table
@@ -171,6 +185,92 @@ DROP TABLE IF EXISTS crawler_queue CASCADE;
 DROP TABLE IF EXISTS crawler_runs CASCADE;
 `;
 
+async function getCrawlerResults(
+	db: IDatabase<any>,
+	runId: number,
+	includeHtml: boolean,
+): Promise<{
+	run: any;
+	stats: {
+		total_pages: number;
+		pending_pages: number;
+		completed_pages: number;
+		failed_pages: number;
+		canceled_pages: number;
+		duration_seconds: number;
+	};
+	logs: any[];
+	pages: any[];
+}> {
+	// Get run information
+	const runInfo = await db.one(
+		'SELECT *, EXTRACT(EPOCH FROM (completed_at - created_at)) as duration_seconds FROM crawler_runs WHERE id = $1',
+		[runId],
+	);
+
+	// Get all logs for the run, ordered by creation time
+	const logs = await db.manyOrNone(
+		'SELECT level, message, metadata, created_at FROM crawler_logs WHERE run_id = $1 ORDER BY id ASC',
+		[runId],
+	);
+
+	// Get all completed pages (excluding HTML if not requested)
+	const pagesQuery = includeHtml
+		? `SELECT * FROM crawler_queue WHERE run_id = $1`
+		: `SELECT id, run_id, url, status, parent_url, depth, error, response_status_code, response_final_url, created_at, updated_at 
+		   FROM crawler_queue WHERE run_id = $1`;
+
+	const pages = await db.manyOrNone(pagesQuery, [runId]);
+
+	// Get statistics
+	const stats = await db.one<{ total: string, pending: string, completed: string, failed: string, canceled: string }>(
+		`SELECT 
+			COUNT(*) as total,
+			COUNT(*) FILTER (WHERE status = 'pending') as pending,
+			COUNT(*) FILTER (WHERE status = 'completed') as completed,
+			COUNT(*) FILTER (WHERE status = 'failed') as failed,
+			COUNT(*) FILTER (WHERE status = 'canceled') as canceled
+		FROM crawler_queue 
+		WHERE run_id = $1`,
+		[runId],
+	);
+
+	return {
+		run: runInfo,
+		stats: {
+			total_pages: parseInt(stats.total),
+			pending_pages: parseInt(stats.pending),
+			completed_pages: parseInt(stats.completed),
+			failed_pages: parseInt(stats.failed),
+			canceled_pages: parseInt(stats.canceled),
+			duration_seconds: Math.round(runInfo.duration_seconds || 0),
+		},
+		logs,
+		pages,
+	};
+}
+
+async function waitForCrawlerToFinish(db: IDatabase<any>, runId: number): Promise<void> {
+	await new Promise<void>((resolve) => {
+		const checkInterval = setInterval(async () => {
+			const status = await db.oneOrNone<{ status: string }>(
+				'SELECT status FROM crawler_runs WHERE id = $1',
+				[runId],
+			);
+
+			if (status && ['completed', 'failed', 'canceled'].includes(status.status)) {
+				// Set completed_at when the run finishes
+				await db.none(
+					'UPDATE crawler_runs SET completed_at = CURRENT_TIMESTAMP WHERE id = $1 AND completed_at IS NULL',
+					[runId],
+				);
+				clearInterval(checkInterval);
+				resolve();
+			}
+		}, 1000);
+	});
+}
+
 export async function executeCrawler(
 	this: IExecuteFunctions,
 	items: INodeExecutionData[],
@@ -205,7 +305,8 @@ export async function executeCrawler(
 				exclude_patterns TEXT[] DEFAULT '{}',
 				crawl_external BOOLEAN DEFAULT false,
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+				updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				completed_at TIMESTAMP WITH TIME ZONE
 			);
 
 			CREATE TABLE IF NOT EXISTS crawler_queue (
@@ -298,7 +399,13 @@ export async function executeCrawler(
 				run.crawl_external,
 			);
 
-			result = { json: { runId: run.id, status: 'started', startUrl } };
+			// Wait for crawler to finish
+			await waitForCrawlerToFinish(db, run.id);
+
+			// Get complete run information
+			const includeHtml = this.getNodeParameter('includeHtml', itemIndex, false) as boolean;
+			const results = await getCrawlerResults(db, run.id, includeHtml);
+			result = { json: results };
 		} else if (operation === 'crawler-resume') {
 			const runId = this.getNodeParameter('runId', itemIndex) as number;
 
@@ -333,7 +440,13 @@ export async function executeCrawler(
 			// Resume processing queue
 			await processCrawlerQueue.call(this, db, run.id, maxDepth, maxPages, includePatterns, excludePatterns);
 
-			result = { json: { runId, status: 'resumed' } };
+			// Wait for crawler to finish
+			await waitForCrawlerToFinish(db, run.id);
+
+			// Get complete run information
+			const includeHtml = this.getNodeParameter('includeHtml', itemIndex, false) as boolean;
+			const results = await getCrawlerResults(db, run.id, includeHtml);
+			result = { json: results };
 		} else if (operation === 'crawler-pause') {
 			const runId = this.getNodeParameter('runId', itemIndex) as number;
 
