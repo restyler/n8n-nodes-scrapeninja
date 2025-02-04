@@ -4,7 +4,7 @@ import type {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
-import { NodeOperationError } from 'n8n-workflow';
+import { NodeOperationError, NodeConnectionType } from 'n8n-workflow';
 import { extractContentProperties, executeExtractContent } from './ExtractContent';
 import { scrapeProperties, scrapeJsProperties, executeScrape } from './ScrapeOperations';
 import { cleanupHtmlProperties, executeCleanupHtml } from './CleanupHtml';
@@ -23,8 +23,12 @@ export class ScrapeNinja implements INodeType {
 		defaults: {
 			name: 'ScrapeNinja',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [{
+			type: NodeConnectionType.Main,
+		}],
+		outputs: [{
+			type: NodeConnectionType.Main,
+		}],
 		credentials: [
 			{
 				name: 'scrapeNinjaApi',

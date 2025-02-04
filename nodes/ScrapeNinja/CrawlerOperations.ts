@@ -6,6 +6,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 import pgPromise, { IDatabase, ITask } from 'pg-promise';
 import { processCrawlerQueue } from './CrawlerExecute';
+import { IScrapeSettings } from './types';
 
 interface ICrawlerRun {
 	id: number;
@@ -13,15 +14,29 @@ interface ICrawlerRun {
 	status: 'running' | 'paused' | 'completed' | 'failed' | 'canceled';
 	max_depth: number;
 	max_pages: number;
+	concurrency: number;
 	include_patterns: string[];
 	exclude_patterns: string[];
 	crawl_external: boolean;
+	settings: IScrapeSettings;
 	created_at: Date;
 	updated_at: Date;
 	completed_at: Date | null;
 }
 
 export const crawlerProperties: INodeProperties[] = [
+	// Crawler Settings Group
+	{
+		displayName: 'Crawler Settings. Crawler node can take long time to finish! Please be patient and explore n8n logs to see realtime progress. Also, you can poll Postgres tables crawler_runs and crawler_queue to track the progress and crawler_logs to see detailed crawler logs.',
+		name: 'crawlerSettingsHeader',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
 	{
 		displayName: 'Start URL',
 		name: 'startUrl',
@@ -35,19 +50,6 @@ export const crawlerProperties: INodeProperties[] = [
 		},
 		placeholder: 'https://example.com',
 		description: 'The URL to start crawling from',
-	},
-	{
-		displayName: 'Run ID',
-		name: 'runId',
-		type: 'number',
-		default: 0,
-		required: true,
-		displayOptions: {
-			show: {
-				operation: ['crawler-resume', 'crawler-pause'],
-			},
-		},
-		description: 'ID of the crawl run to resume or pause',
 	},
 	{
 		displayName: 'Max Depth',
@@ -67,6 +69,22 @@ export const crawlerProperties: INodeProperties[] = [
 		type: 'number',
 		default: 100,
 		description: 'Maximum number of pages to crawl',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Concurrent Requests',
+		name: 'concurrency',
+		type: 'number',
+		default: 1,
+		description: 'Number of concurrent requests (1-5)',
+		typeOptions: {
+			minValue: 1,
+			maxValue: 5,
+		},
 		displayOptions: {
 			show: {
 				operation: ['crawler-start'],
@@ -120,10 +138,275 @@ export const crawlerProperties: INodeProperties[] = [
 		name: 'includeHtml',
 		type: 'boolean',
 		default: false,
-		description: 'Whether to include HTML content in the results. WARNING: Only enable this if crawling less than 30 pages! For larger crawls, use the Postgres node to retrieve HTML by page ID from crawler_queue table.',
+		description: 'Whether to include HTML content in the results. WARNING: Only enable this if crawling less than 30 pages!',
 		displayOptions: {
 			show: {
 				operation: ['crawler-start', 'crawler-resume'],
+			},
+		},
+	},
+
+	// Scraping Engine Settings Group
+	{
+		displayName: 'Scraping Engine Settings',
+		name: 'scrapingSettingsHeader',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Engine Type',
+		name: 'engine',
+		type: 'options',
+		options: [
+			{
+				name: 'Fast (No JS)',
+				value: 'scrape',
+				description: 'High-performance, no-JS endpoint. Performs raw network request with TLS fingerprint of a real browser.',
+			},
+			{
+				name: 'Real Browser (With JS)',
+				value: 'scrape-js',
+				description: 'Real Chrome rendering with Javascript. Takes screenshots. 3x slower',
+			},
+		],
+		default: 'scrape',
+		description: 'Choose which scraping engine to use for crawling',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Run ID',
+		name: 'runId',
+		type: 'number',
+		default: 0,
+		required: true,
+		displayOptions: {
+			show: {
+				operation: ['crawler-resume', 'crawler-pause'],
+			},
+		},
+		description: 'ID of the crawl run to resume or pause',
+	},
+	{
+		displayName: 'Headers',
+		name: 'headers',
+		type: 'string',
+		typeOptions: {
+			multipleValues: true,
+			multipleValueButtonText: 'Add Header',
+		},
+		default: [],
+		placeholder: 'X-Header: some-random-header',
+		description: 'Custom request headers (one per line: "HeaderName: value"). Adding User-Agent and other basic headers is ' +
+			'NOT recommended, they will be added automatically by ScrapeNinja.',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Retry Count',
+		name: 'retryNum',
+		type: 'number',
+		default: 1,
+		description: 'Number of retry attempts if certain conditions fail',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Geo Location',
+		name: 'geo',
+		type: 'options',
+		options: [
+			{
+				name: '[Custom or Premium Proxy]',
+				value: '_custom',
+			},
+			{
+				name: 'Australia',
+				value: 'au',
+			},
+			{
+				name: 'Brazil',
+				value: 'br',
+			},
+			{
+				name: 'Europe',
+				value: 'eu',
+			},
+			{
+				name: 'France',
+				value: 'fr',
+			},
+			{
+				name: 'Germany',
+				value: 'de',
+			},
+			{
+				name: 'United States',
+				value: 'us',
+			},
+		],
+		default: 'us',
+		description: 'Proxy geo location or custom proxy',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Custom Proxy URL',
+		name: 'proxy',
+		type: 'string',
+		default: '',
+		description: 'Premium or custom proxy URL',
+		placeholder: 'http://user:pass@host:port',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+				geo: ['_custom'],
+			},
+		},
+	},
+	{
+		displayName: 'Text Not Expected',
+		name: 'textNotExpected',
+		type: 'string',
+		typeOptions: {
+			multipleValues: true,
+			multipleValueButtonText: 'Add Text',
+		},
+		default: [],
+		description: 'Array of text patterns that, if found, will trigger a retry with another proxy',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Status Not Expected',
+		name: 'statusNotExpected',
+		type: 'number',
+		typeOptions: {
+			multipleValues: true,
+			multipleValueButtonText: 'Add Status Code',
+		},
+		default: [],
+		description: 'HTTP statuses that will trigger a retry with another proxy',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Follow Redirects',
+		name: 'followRedirects',
+		type: 'boolean',
+		default: true,
+		description: 'Whether to follow HTTP redirects',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+				engine: ['scrape'],
+			},
+		},
+	},
+	{
+		displayName: 'Timeout (Seconds)',
+		name: 'timeout',
+		type: 'number',
+		default: 10,
+		description: 'Timeout per attempt (in seconds)',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+				engine: ['scrape'],
+			},
+		},
+	},
+	{
+		displayName: 'Timeout (Seconds)',
+		name: 'timeoutJs',
+		type: 'number',
+		default: 16,
+		description: 'Timeout per attempt (in seconds) for JS-based scraping',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+				engine: ['scrape-js'],
+			},
+		},
+	},
+	// JS-specific options
+	{
+		displayName: 'Wait For Selector',
+		name: 'waitForSelector',
+		type: 'string',
+		default: '',
+		description: 'CSS selector to wait for before considering page loaded',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+				engine: ['scrape-js'],
+			},
+		},
+	},
+	{
+		displayName: 'Block Images',
+		name: 'blockImages',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to block images in real Chrome to speed up loading',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+				engine: ['scrape-js'],
+			},
+		},
+	},
+	{
+		displayName: 'Block Media (CSS, Fonts)',
+		name: 'blockMedia',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to block CSS/fonts in real Chrome to speed up loading',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+				engine: ['scrape-js'],
+			},
+		},
+	},
+	{
+		displayName: 'Post-Load Wait Time',
+		name: 'postWaitTime',
+		type: 'number',
+		typeOptions: {
+			minValue: 0,
+			maxValue: 12,
+		},
+		default: 0,
+		placeholder: '5',
+		description: 'Wait for specified amount of seconds after page load (from 1 to 12s)',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+				engine: ['scrape-js'],
 			},
 		},
 	},
@@ -137,9 +420,11 @@ CREATE TABLE IF NOT EXISTS crawler_runs (
 	status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'paused', 'completed', 'failed', 'canceled')),
 	max_depth INTEGER NOT NULL,
 	max_pages INTEGER NOT NULL,
+	concurrency INTEGER NOT NULL DEFAULT 1,
 	include_patterns TEXT[] DEFAULT '{}',
 	exclude_patterns TEXT[] DEFAULT '{}',
 	crawl_external BOOLEAN DEFAULT false,
+	settings JSONB NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 	completed_at TIMESTAMP WITH TIME ZONE
@@ -199,8 +484,8 @@ async function getCrawlerResults(
 		canceled_pages: number;
 		duration_seconds: number;
 	};
-	logs: any[];
 	pages: any[];
+	logs: any[];
 }> {
 	// Get run information
 	const runInfo = await db.one(
@@ -245,8 +530,8 @@ async function getCrawlerResults(
 			canceled_pages: parseInt(stats.canceled),
 			duration_seconds: Math.round(runInfo.duration_seconds || 0),
 		},
-		logs,
 		pages,
+		logs,
 	};
 }
 
@@ -301,9 +586,11 @@ export async function executeCrawler(
 				status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'paused', 'completed', 'failed', 'canceled')),
 				max_depth INTEGER NOT NULL,
 				max_pages INTEGER NOT NULL,
+				concurrency INTEGER NOT NULL DEFAULT 1,
 				include_patterns TEXT[] DEFAULT '{}',
 				exclude_patterns TEXT[] DEFAULT '{}',
 				crawl_external BOOLEAN DEFAULT false,
+				settings JSONB NOT NULL,
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 				completed_at TIMESTAMP WITH TIME ZONE
@@ -336,6 +623,26 @@ export async function executeCrawler(
 			const excludePatterns = this.getNodeParameter('excludePatterns', itemIndex) as string[];
 			const crawlExternal = this.getNodeParameter('crawlExternal', itemIndex, false) as boolean;
 
+			// Get scraping options
+			const engine = this.getNodeParameter('engine', itemIndex) as string;
+			const headers = this.getNodeParameter('headers', itemIndex, []) as string[];
+			const retryNum = this.getNodeParameter('retryNum', itemIndex, 1) as number;
+			const geo = this.getNodeParameter('geo', itemIndex, 'us') as string;
+			const proxy = geo === '_custom' ? this.getNodeParameter('proxy', itemIndex, '') as string : undefined;
+			const textNotExpected = this.getNodeParameter('textNotExpected', itemIndex, []) as string[];
+			const statusNotExpected = this.getNodeParameter('statusNotExpected', itemIndex, []) as number[];
+
+			// Engine-specific options
+			const followRedirects = engine === 'scrape' ? this.getNodeParameter('followRedirects', itemIndex, true) as boolean : undefined;
+			const timeout = engine === 'scrape' ? this.getNodeParameter('timeout', itemIndex, 10) as number : undefined;
+			const timeoutJs = engine === 'scrape-js' ? this.getNodeParameter('timeoutJs', itemIndex, 16) as number : undefined;
+			const waitForSelector = engine === 'scrape-js' ? this.getNodeParameter('waitForSelector', itemIndex, '') as string : undefined;
+			const blockImages = engine === 'scrape-js' ? this.getNodeParameter('blockImages', itemIndex, false) as boolean : undefined;
+			const blockMedia = engine === 'scrape-js' ? this.getNodeParameter('blockMedia', itemIndex, false) as boolean : undefined;
+			const postWaitTime = engine === 'scrape-js' ? this.getNodeParameter('postWaitTime', itemIndex, 0) as number : undefined;
+
+			const concurrency = this.getNodeParameter('concurrency', itemIndex, 1) as number;
+
 			if (resetTables) {
 				// Drop all tables and their dependencies
 				await db.none(dropTablesSQL);
@@ -346,26 +653,35 @@ export async function executeCrawler(
 
 			this.logger.info('Starting new crawler run', { startUrl, maxDepth, maxPages });
 
-			// Create new crawl run and add initial URL in a transaction
+			// Create new crawl run with all options
 			const run = await db.tx<ICrawlerRun>(async (t: ITask<any>) => {
+				const settings = {
+					engine,
+					headers,
+					retryNum,
+					geo,
+					proxy,
+					textNotExpected,
+					statusNotExpected,
+					followRedirects,
+					timeout,
+					timeoutJs,
+					waitForSelector,
+					blockImages,
+					blockMedia,
+					postWaitTime,
+				};
+
 				const runResult = await t.one<ICrawlerRun>(
 					`INSERT INTO crawler_runs (
-						start_url, 
-						status, 
-						max_depth, 
-						max_pages, 
-						include_patterns, 
-						exclude_patterns,
-						crawl_external
-					) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+						start_url, status, max_depth, max_pages, 
+						concurrency, include_patterns, exclude_patterns, crawl_external,
+						settings
+					) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
 					[
-						startUrl,
-						'running',
-						maxDepth,
-						maxPages,
-						includePatterns,
-						excludePatterns,
-						crawlExternal,
+						startUrl, 'running', maxDepth, maxPages,
+						concurrency, includePatterns, excludePatterns, crawlExternal,
+						settings,
 					],
 				);
 
@@ -377,6 +693,7 @@ export async function executeCrawler(
 					includePatterns,
 					excludePatterns,
 					crawlExternal,
+					settings,
 				});
 
 				await t.none(
@@ -387,7 +704,7 @@ export async function executeCrawler(
 				return runResult;
 			});
 
-			// Start processing queue
+			// Pass all options to processCrawlerQueue
 			await processCrawlerQueue.call(
 				this,
 				db,
@@ -397,6 +714,7 @@ export async function executeCrawler(
 				run.include_patterns,
 				run.exclude_patterns,
 				run.crawl_external,
+				run.settings,
 			);
 
 			// Wait for crawler to finish
@@ -432,13 +750,18 @@ export async function executeCrawler(
 				return runResult;
 			});
 
-			const maxDepth = this.getNodeParameter('maxDepth', itemIndex, 3) as number;
-			const maxPages = this.getNodeParameter('maxPages', itemIndex, 100) as number;
-			const includePatterns = this.getNodeParameter('includePatterns', itemIndex, []) as string[];
-			const excludePatterns = this.getNodeParameter('excludePatterns', itemIndex, []) as string[];
-
-			// Resume processing queue
-			await processCrawlerQueue.call(this, db, run.id, maxDepth, maxPages, includePatterns, excludePatterns);
+			// Resume processing queue with all original settings
+			await processCrawlerQueue.call(
+				this,
+				db,
+				run.id,
+				run.max_depth,
+				run.max_pages,
+				run.include_patterns,
+				run.exclude_patterns,
+				run.crawl_external,
+				run.settings,
+			);
 
 			// Wait for crawler to finish
 			await waitForCrawlerToFinish(db, run.id);
