@@ -32,7 +32,7 @@ export class ScrapeNinja implements INodeType {
 		credentials: [
 			{
 				name: 'scrapeNinjaApi',
-				required: false,
+				required: true,
 				displayOptions: {
 					show: {
 						operation: ['scrape', 'scrape-js', 'crawler-start'],
