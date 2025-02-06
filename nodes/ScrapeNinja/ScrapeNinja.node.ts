@@ -23,11 +23,12 @@ export class ScrapeNinja implements INodeType {
 		defaults: {
 			name: 'ScrapeNinja',
 		},
-		inputs: [{
-			type: NodeConnectionType.Main,
+		// linter conflicts with ts types:
+		inputs: [{ // eslint-disable-line
+			type: NodeConnectionType.Main, // eslint-disable-line
 		}],
-		outputs: [{
-			type: NodeConnectionType.Main,
+		outputs: [{ // eslint-disable-line
+			type: NodeConnectionType.Main, // eslint-disable-line
 		}],
 		credentials: [
 			{
@@ -40,7 +41,7 @@ export class ScrapeNinja implements INodeType {
 				},
 			},
 			{
-				name: 'postgres',
+				name: 'postgres', // eslint-disable-line
 				required: true,
 				displayOptions: {
 					show: {
@@ -55,22 +56,23 @@ export class ScrapeNinja implements INodeType {
 				name: 'operation',
 				type: 'options',
 				noDataExpression: true,
-				options: [
+				options: [ // eslint-disable-line
 					{
-						name: 'Scrape single page (fast)',
+						name: 'Scrape Single Page (Fast)',
 						value: 'scrape',
 						description: 'High-performance, no-JS endpoint. Performs raw network request with TLS fingerprint of a real browser.',
 						// eslint-disable-next-line
 						action: 'Scrape single page (Fast, no JS evaluation)',
 					},
 					{
-						name: 'Scrape single page (browser, slow)',
+						name: 'Scrape Single Page (Browser, Slow)',
 						value: 'scrape-js',
 						description: 'Real Chrome rendering with JS. Takes screenshots. 3x slower',
+						// eslint-disable-next-line
 						action: 'Scrape single page (Slow, real browser)',
 					},
 					{
-						name: 'Crawl website (many pages)',
+						name: 'Crawl Website (Many Pages)',
 						value: 'crawler-start',
 						description: 'Start a new crawling process with traversal of the entire website',
 						action: 'Crawl multiple pages',

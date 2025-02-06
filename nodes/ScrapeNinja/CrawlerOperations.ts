@@ -145,7 +145,7 @@ export const crawlerProperties: INodeProperties[] = [
 		},
 	},
 	{
-		displayName: 'Re-set Crawler Tables',
+		displayName: 'Re-Set Crawler Tables',
 		name: 'resetTables',
 		type: 'boolean',
 		default: false,
@@ -325,6 +325,7 @@ export const crawlerProperties: INodeProperties[] = [
 			multipleValues: true,
 			multipleValueButtonText: 'Add Status Code',
 		},
+		// eslint-disable-next-line
 		default: [],
 		description: 'HTTP statuses that will trigger a retry with another proxy',
 		displayOptions: {
