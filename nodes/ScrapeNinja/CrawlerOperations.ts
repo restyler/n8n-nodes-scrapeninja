@@ -11,7 +11,7 @@ import { IScrapeSettings } from './types';
 interface ICrawlerRun {
 	id: number;
 	start_url: string;
-	status: 'running' | 'paused' | 'completed' | 'failed' | 'canceled';
+	status: 'running' | 'completed' | 'failed' | 'canceled';
 	max_depth: number;
 	max_pages: number;
 	concurrency: number;
@@ -157,14 +157,24 @@ export const crawlerProperties: INodeProperties[] = [
 		},
 	},
 	{
-		displayName: 'Include HTML of Scraped Pages',
-		name: 'includeHtml',
-		type: 'boolean',
-		default: false,
-		description: 'Whether to include HTML content in the results. WARNING: Only enable this if crawling less than 30 pages!',
+		displayName: 'WARNING: Only enable next parameter if crawling less than 30 pages as 1 HTML page can be as large as 10MB! A recommended way to get HTML is to use the dedicated Postgres node and get HTML from the crawler_queue table (status: completed, response_html column).',
+		name: 'htmlWarning',
+		type: 'notice',
+		default: '',
 		displayOptions: {
 			show: {
-				operation: ['crawler-start', 'crawler-resume'],
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
+		displayName: 'Embed HTML of Scraped Pages in Node Output',
+		name: 'includeHtml', 
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
 			},
 		},
 	},
@@ -204,19 +214,6 @@ export const crawlerProperties: INodeProperties[] = [
 				operation: ['crawler-start'],
 			},
 		},
-	},
-	{
-		displayName: 'Run ID',
-		name: 'runId',
-		type: 'number',
-		default: 0,
-		required: true,
-		displayOptions: {
-			show: {
-				operation: ['crawler-resume', 'crawler-pause'],
-			},
-		},
-		description: 'ID of the crawl run to resume or pause',
 	},
 	{
 		displayName: 'Headers',
@@ -748,64 +745,6 @@ export async function executeCrawler(
 			const includeHtml = this.getNodeParameter('includeHtml', itemIndex, false) as boolean;
 			const results = await getCrawlerResults(db, run.id, includeHtml);
 			result = { json: results };
-		} else if (operation === 'crawler-resume') {
-			const runId = this.getNodeParameter('runId', itemIndex) as number;
-
-			this.logger.info('Resuming crawler run', { runId });
-
-			// Update run status and verify it exists in a transaction
-			const run = await db.tx<ICrawlerRun>(async (t: ITask<any>) => {
-				const runResult = await t.oneOrNone<ICrawlerRun>(
-					'SELECT * FROM crawler_runs WHERE id = $1',
-					[runId],
-				);
-
-				if (!runResult) {
-					this.logger.error('Run not found', { runId });
-					throw new NodeOperationError(this.getNode(), `Run ID ${runId} not found`);
-				}
-
-				this.logger.debug('Updating run status to running', { runId });
-				await t.none(
-					'UPDATE crawler_runs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-					['running', runId],
-				);
-
-				return runResult;
-			});
-
-			// Resume processing queue with all original settings
-			await processCrawlerQueue.call(
-				this,
-				db,
-				run.id,
-				run.max_depth,
-				run.max_pages,
-				run.include_patterns,
-				run.exclude_patterns,
-				run.crawl_external,
-				run.settings,
-			);
-
-			// Wait for crawler to finish
-			await waitForCrawlerToFinish(db, run.id);
-
-			// Get complete run information
-			const includeHtml = this.getNodeParameter('includeHtml', itemIndex, false) as boolean;
-			const results = await getCrawlerResults(db, run.id, includeHtml);
-			result = { json: results };
-		} else if (operation === 'crawler-pause') {
-			const runId = this.getNodeParameter('runId', itemIndex) as number;
-
-			this.logger.info('Pausing crawler run', { runId });
-
-			// Update run status
-			await db.none(
-				'UPDATE crawler_runs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-				['paused', runId],
-			);
-
-			result = { json: { runId, status: 'paused' } };
 		} else {
 			throw new NodeOperationError(this.getNode(), `Unknown operation: ${operation}`);
 		}

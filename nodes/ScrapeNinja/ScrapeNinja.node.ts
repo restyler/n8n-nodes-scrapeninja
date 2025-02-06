@@ -35,7 +35,7 @@ export class ScrapeNinja implements INodeType {
 				required: false,
 				displayOptions: {
 					show: {
-						operation: ['scrape', 'scrape-js', 'crawler-start', 'crawler-resume'],
+						operation: ['scrape', 'scrape-js', 'crawler-start'],
 					},
 				},
 			},
@@ -44,7 +44,7 @@ export class ScrapeNinja implements INodeType {
 				required: true,
 				displayOptions: {
 					show: {
-						operation: ['crawler-start', 'crawler-resume', 'crawler-pause'],
+						operation: ['crawler-start'],
 					},
 				},
 			},
@@ -56,55 +56,46 @@ export class ScrapeNinja implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				options: [
-                    {
-                        name: 'Clean Up HTML',
-                        value: 'cleanup-html',
-                        description: 'Clean up and compress HTML content',
-                        action: 'Clean up HTML content',
-                    },
-                    {
-                        name: 'Crawler: Pause',
-                        value: 'crawler-pause',
-                        description: 'Pause an active crawl',
-                        action: 'Pause an active crawl',
-                    },
-                    {
-                        name: 'Crawler: Resume',
-                        value: 'crawler-resume',
-                        description: 'Resume an existing crawl',
-                        action: 'Resume an existing crawl',
-                    },
-                    {
-                        name: 'Crawler: Start',
-                        value: 'crawler-start',
-                        description: 'Start a new crawling process',
-                        action: 'Start a new crawling process',
-                    },
-                    {
-                        name: 'Extract Custom',
-                        value: 'extract-custom',
-                        description: 'Extract data using custom javascript function',
-                        action: 'Extract data using custom javascript',
-                    },
-                    {
-                        name: 'Extract Primary Content',
-                        value: 'extract-content',
-                        description: 'Extract primary page content from HTML',
-                        action: 'Extract primary content from HTML',
-                    },
-                    {
-                        name: 'Scrape (No JS)',
-                        value: 'scrape',
-                        description: 'High-performance, no-JS endpoint. Performs raw network request with TLS fingerprint of a real browser.',
-                        action: 'Scrape faster without javascript',
-                    },
-                    {
-                        name: 'Scrape as a Real Browser',
-                        value: 'scrape-js',
-                        description: 'Real Chrome rendering with Javascript. Takes screenshots. 3x slower',
-                        action: 'Scrape slower with real browser',
-                    },
-                ],
+					{
+						name: 'Scrape single page (fast)',
+						value: 'scrape',
+						description: 'High-performance, no-JS endpoint. Performs raw network request with TLS fingerprint of a real browser.',
+						// eslint-disable-next-line
+						action: 'Scrape single page (Fast, no JS evaluation)',
+					},
+					{
+						name: 'Scrape single page (browser, slow)',
+						value: 'scrape-js',
+						description: 'Real Chrome rendering with JS. Takes screenshots. 3x slower',
+						action: 'Scrape single page (Slow, real browser)',
+					},
+					{
+						name: 'Crawl website (many pages)',
+						value: 'crawler-start',
+						description: 'Start a new crawling process with traversal of the entire website',
+						action: 'Crawl multiple pages',
+					},
+					{
+						name: 'Clean up HTML',
+						value: 'cleanup-html',
+						description: 'Clean up and compress HTML content. Lossy. Useful for passing to LLMs',
+						action: 'Clean up HTML content',
+					},
+					{
+						name: 'Extract Custom',
+						value: 'extract-custom',
+						// eslint-disable-next-line
+						description: 'Extract data using custom JS function',
+						// eslint-disable-next-line
+						action: 'Extract data using custom JS code',
+					},
+					{
+						name: 'Extract Primary Content',
+						value: 'extract-content',
+						description: 'Extract primary page content from HTML',
+						action: 'Extract primary content from HTML',
+					}
+				],
 				default: 'scrape',
 				description: 'Choose which endpoint to call',
 			},
