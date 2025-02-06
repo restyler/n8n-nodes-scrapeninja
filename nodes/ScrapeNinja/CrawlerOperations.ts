@@ -92,6 +92,19 @@ export const crawlerProperties: INodeProperties[] = [
 		},
 	},
 	{
+		displayName: 'URL Pattern Matching Guide:\n\n' +
+			'Use * to match within a path segment (e.g., /docs/*.html matches /docs/page.html but not /docs/api/page.html)\n' +
+			'Use ** to match across path segments (e.g., /docs/** matches /docs/api/reference/page.html)',
+		name: 'urlPatternGuide',
+		type: 'notice',
+		default: '',
+		displayOptions: {
+			show: {
+				operation: ['crawler-start'],
+			},
+		},
+	},
+	{
 		displayName: 'URL Inclusion Patterns',
 		name: 'includePatterns',
 		type: 'string',
@@ -99,7 +112,12 @@ export const crawlerProperties: INodeProperties[] = [
 			multipleValues: true,
 		},
 		default: [],
-		description: 'Only crawl URLs matching these patterns (e.g., "*.example.com/*", "/products/*")',
+		placeholder: 'https://example.com/docs/**',
+		description: 'Only crawl URLs matching these patterns. Examples:\n' +
+			'• example.com/docs/* - match files in docs folder\n' +
+			'• example.com/docs/** - match files in docs and all subfolders\n' +
+			'• example.com/blog/*.html - match HTML files in blog folder\n' +
+			'• example.com/*/index.html - match index.html in direct subfolders',
 		displayOptions: {
 			show: {
 				operation: ['crawler-start'],
@@ -114,7 +132,12 @@ export const crawlerProperties: INodeProperties[] = [
 			multipleValues: true,
 		},
 		default: [],
-		description: 'Skip URLs matching these patterns (e.g., "*.md", "*/base-docs/*")',
+		placeholder: '**.pdf',
+		description: 'Skip URLs matching these patterns. Examples:\n' +
+			'• **.pdf - skip all PDF files in any folder\n' +
+			'• **/admin/** - skip anything in admin folders\n' +
+			'• example.com/temp/* - skip files in temp folder\n' +
+			'• */draft-* - skip URLs containing draft- in the last segment',
 		displayOptions: {
 			show: {
 				operation: ['crawler-start'],
@@ -442,6 +465,7 @@ CREATE TABLE IF NOT EXISTS crawler_queue (
 	response_html TEXT,
 	response_status_code INTEGER,
 	response_final_url TEXT,
+	page_title VARCHAR(250),
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

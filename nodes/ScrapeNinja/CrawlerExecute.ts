@@ -28,6 +28,7 @@ interface ICrawlerQueue {
 	response_html?: string;
 	response_status_code?: number;
 	response_final_url?: string;
+	page_title?: string;
 }
 
 function shouldProcessUrl(url: string, includePatterns: string[], excludePatterns: string[]): boolean {
@@ -50,7 +51,6 @@ function shouldProcessUrl(url: string, includePatterns: string[], excludePattern
 
 	// Check exclude patterns - these take precedence over include patterns
 	for (const pattern of excludePatterns) {
-		// Remove protocol from pattern if present
 		const cleanPattern = pattern.replace(/^https?:\/\//, '');
 		
 		if (minimatch(urlForMatching, cleanPattern)) {
@@ -147,6 +147,7 @@ export async function processCrawlerQueue(
 	const queue = new CrawlerQueue(concurrency);
 	let processedPages = 0;
 	let isProcessing = true;
+	let linksQueued = 0;
 
 	try {
 		// Start concurrent processors
@@ -182,8 +183,12 @@ export async function processCrawlerQueue(
 				});
 
 				if (!queueItem) {
-					// Check if we should stop processing
-					const stats = await db.one<{ total: string, pending: string, completed: string, failed: string }>(
+					const stats = await db.one<{
+						total: string;
+						pending: string;
+						completed: string;
+						failed: string;
+					}>(
 						`SELECT 
 							COUNT(*) as total,
 							COUNT(*) FILTER (WHERE status = 'pending') as pending,
@@ -193,30 +198,38 @@ export async function processCrawlerQueue(
 						WHERE run_id = $1`,
 						[runId],
 					);
-
-					// If there are no pending items and no completed items, stop processing
-					if (parseInt(stats.pending) === 0 && parseInt(stats.completed) === 0) {
+				
+					// If there are no pending items, stop processing.
+					if (parseInt(stats.pending) === 0) {
 						isProcessing = false;
-						logToCrawler.call(this, db, runId, 'warn', 'No URLs to process and no successful crawls, stopping crawler', {
-							runId,
-							queue_stats: {
-								total: parseInt(stats.total),
-								pending: parseInt(stats.pending),
-								completed: parseInt(stats.completed),
-								failed: parseInt(stats.failed),
-							},
-						});
-						
-						// Update run status to failed if we haven't processed any pages successfully
-						await db.none(
-							'UPDATE crawler_runs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-							['failed', runId],
-						);
-						return;
+						// Optionally, mark the run as failed if no pages were processed successfully.
+						if (parseInt(stats.completed) === 0) {
+							logToCrawler.call(
+								this,
+								db,
+								runId,
+								'warn',
+								'No URLs processed successfully, stopping crawler',
+								{
+									runId,
+									queue_stats: {
+										total: parseInt(stats.total),
+										pending: parseInt(stats.pending),
+										completed: parseInt(stats.completed),
+										failed: parseInt(stats.failed),
+									},
+								},
+							);
+							await db.none(
+								'UPDATE crawler_runs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+								['failed', runId],
+							);
+						}
+						break; // exit the worker loop
 					}
-
-					// No more items to process at the moment
-					await new Promise(resolve => setTimeout(resolve, 1000)); // Wait before checking again
+				
+					// No items available now; wait before trying again.
+					await new Promise((resolve) => setTimeout(resolve, 1000));
 					continue;
 				}
 
@@ -342,31 +355,11 @@ export async function processCrawlerQueue(
 						// Calculate request latency
 						const requestLatencyMs = Date.now() - requestStartTime;
 
-						// Store response data
-						await db.none(
-							`UPDATE crawler_queue 
-							SET response_html = $1, 
-								response_status_code = $2, 
-								response_final_url = $3
-							WHERE id = $4`,
-							[
-								scrapeResult.body,
-								scrapeResult.info.statusCode,
-								scrapeResult.info.finalUrl,
-								queueItem.id,
-							],
-						);
-
-						// Extract links from HTML
+						// Extract page title and links from HTML
 						const $ = cheerio.load(scrapeResult.body);
-						const links = new Set<string>();
-
-						logToCrawler.call(this, db, runId, 'debug', `ScrapeNinja response info for "${queueItem.url}"`, { 
-							runId,
-							url: queueItem.url,
-							statusCode: scrapeResult.info.statusCode,
-							finalUrl: scrapeResult.info.finalUrl,
-						});
+						const allLinks = new Set<string>();
+						const ignoredLinks = new Set<string>();
+						const includedLinks = new Set<string>();
 
 						$('a[href]').each((_, element) => {
 							const href = $(element).attr('href');
@@ -375,16 +368,19 @@ export async function processCrawlerQueue(
 							try {
 								// Resolve relative URLs
 								const resolvedUrl = new URL(href, queueItem.url).toString();
-								// Normalize URL before adding to set
 								const normalizedUrl = normalizeUrl(resolvedUrl);
+								allLinks.add(normalizedUrl);
 								
 								if (shouldProcessUrl(normalizedUrl, includePatterns, excludePatterns)) {
 									if (crawlExternal || new URL(normalizedUrl).hostname === new URL(queueItem.url).hostname) {
-										links.add(normalizedUrl);
+										includedLinks.add(normalizedUrl);
+									} else {
+										ignoredLinks.add(normalizedUrl);
 									}
+								} else {
+									ignoredLinks.add(normalizedUrl);
 								}
 							} catch (e) {
-								// Skip invalid URLs
 								logToCrawler.call(this, db, runId, 'debug', `Skipping invalid URL "${href}"`, { 
 									runId,
 									parentUrl: queueItem.url,
@@ -393,23 +389,52 @@ export async function processCrawlerQueue(
 							}
 						});
 
-						logToCrawler.call(this, db, runId, 'debug', `Found ${links.size} links on page "${queueItem.url}"`, { 
+						// Detailed logging for the first page only
+						if (processedPages === 0) {
+							const ignoredLinksArray = Array.from(ignoredLinks);
+							const includedLinksArray = Array.from(includedLinks);
+							
+							logToCrawler.call(this, db, runId, 'info', `First page link analysis for "${queueItem.url}"`, { 
+								runId,
+								total_links_found: allLinks.size,
+								links_included: includedLinks.size,
+								links_ignored: ignoredLinks.size,
+								sample_ignored_links: ignoredLinksArray.slice(0, 30),
+								sample_included_links: includedLinksArray.slice(0, 10),
+								include_patterns: includePatterns,
+								exclude_patterns: excludePatterns,
+								crawl_external: crawlExternal,
+							});
+						}
+
+						// Store response data
+						await db.none(
+							`UPDATE crawler_queue 
+							SET response_html = $1, 
+								response_status_code = $2, 
+								response_final_url = $3,
+								page_title = $4
+							WHERE id = $5`,
+							[
+								scrapeResult.body,
+								scrapeResult.info.statusCode,
+								scrapeResult.info.finalUrl,
+								$('title').text().trim().substring(0, 250),
+								queueItem.id,
+							],
+						);
+
+						logToCrawler.call(this, db, runId, 'debug', `ScrapeNinja response info for "${queueItem.url}"`, { 
 							runId,
 							url: queueItem.url,
-							linksCount: links.size,
+							statusCode: scrapeResult.info.statusCode,
+							finalUrl: scrapeResult.info.finalUrl,
+							pageTitle: $('title').text().trim().substring(0, 250),
 						});
 
-						let linksQueued = 0;
-
-						// Add new URLs to queue if within depth limit using a transaction
+						// Add included links to the queue
 						if (queueItem.depth < maxDepth) {
 							await db.tx(async (t: ITask<any>) => {
-								// Create a unique index on run_id and normalized_url if it doesn't exist
-								await t.none(`
-									CREATE INDEX IF NOT EXISTS idx_crawler_queue_url_dedup 
-									ON crawler_queue(run_id, url);
-								`);
-
 								// Get all existing URLs for this run in one query
 								const existingUrls = new Set(
 									(await t.manyOrNone<{ url: string }>(
@@ -419,7 +444,7 @@ export async function processCrawlerQueue(
 								);
 
 								// Filter out existing URLs
-								const newLinks = Array.from(links).filter(link => !existingUrls.has(link));
+								const newLinks = Array.from(includedLinks).filter(link => !existingUrls.has(link));
 								linksQueued = newLinks.length;
 
 								if (linksQueued > 0) {
@@ -469,16 +494,19 @@ export async function processCrawlerQueue(
 							[runId],
 						);
 
+						// Increment processed pages counter here only
+						processedPages++;
+
 						// Add latency to success log
 						logToCrawler.call(this, db, runId, 'info', `Successfully processed page "${queueItem.url}"`, {
 							url: queueItem.url,
 							status: 'completed',
 							parent_url: queueItem.parent_url,
 							depth: queueItem.depth,
-							links_found: links.size,
+							links_found: allLinks.size,
 							links_queued: linksQueued,
 							run_id: runId,
-							processed_pages: processedPages + 1,
+							processed_pages: processedPages,
 							max_pages: maxPages,
 							latency_ms: requestLatencyMs,
 							queue_stats: {
@@ -488,8 +516,6 @@ export async function processCrawlerQueue(
 								failed: parseInt(stats.failed),
 							},
 						});
-
-						processedPages++;
 
 						// Check if we've reached maxPages
 						if (processedPages >= maxPages) {
@@ -606,8 +632,6 @@ export async function processCrawlerQueue(
 						}
 					}
 				});
-
-				processedPages++;
 			}
 		});
 
